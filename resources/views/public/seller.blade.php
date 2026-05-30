@@ -1121,9 +1121,6 @@
             <div class="modal-header">
                 <div class="modal-title-row">
                     <h2 class="modal-title" id="tryOnModalTitle">{{ __('ui.store.tryon_tool_title') }}</h2>
-                    @if (($tryOnDummy['enabled'] ?? false) === true)
-                        <span class="dummy-mode-badge">{{ __('ui.store.dummy_mode') }}</span>
-                    @endif
                 </div>
                 <button type="button" class="modal-close" onclick="closeTryOnModal()" aria-label="{{ __('ui.common.close') }}">&times;</button>
             </div>
@@ -1154,11 +1151,6 @@
                     <div class="field">
                         <div class="model-footer-row">
                             <label class="label">{{ __('ui.store.model_photo') }}</label>
-                            <label class="dummy-toggle" id="dummyModelToggleWrap" style="display:none;">
-                                <input type="checkbox" id="useDummyModelToggle">
-                                <span class="dummy-toggle-switch" aria-hidden="true"></span>
-                                <span class="dummy-toggle-text">{{ __('ui.store.use_dummy') }}</span>
-                            </label>
                         </div>
                         <div class="preview-box preview-box-model">
                             <img id="customerPreview" alt="Customer preview">
@@ -1200,18 +1192,14 @@
             historyResultShown: @json(__('ui.store.history_result_shown')),
             historyItemAria: @json(__('ui.store.history_button_aria')),
             historyImageAlt: @json(__('ui.store.tryon_generated')),
-            dummyModelUrlMissing: @json(__('ui.store.dummy_model_url_missing')),
-            dummyResultUrlMissing: @json(__('ui.store.dummy_result_url_missing')),
             processingRetryLater: @json(__('ui.store.processing_retry_later')),
         };
 
         let selectedProductId = @json(optional($selectedProduct)->id);
         let pollTimer = null;
         const TRYON_DEVICE_KEY = 'tryon_device_id_v1';
-        const TRYON_DUMMY = @json($tryOnDummy ?? ['enabled' => false, 'model_image_url' => '', 'result_url' => '']);
         const TRYON_HISTORY_URL = @json(route('public.tryon.sessions.history', ['seller_slug' => $seller->slug]));
         let remainingDailyQuota = null;
-        let useDummyModelForRealGenerate = Boolean(TRYON_DUMMY.model_image_url);
 
         function resolveTryOnDeviceId() {
             try {
@@ -1553,85 +1541,6 @@
             }
         }
 
-        function consumeDummyQuotaUI() {
-            if (remainingDailyQuota === null) {
-                return;
-            }
-
-            remainingDailyQuota = Math.max(remainingDailyQuota - 1, 0);
-            const quotaEl = document.getElementById('remainingQuotaText');
-            if (quotaEl) {
-                const parts = quotaEl.textContent.split('/');
-                const limit = Number((parts[1] || '').trim());
-                if (!Number.isNaN(limit) && limit > 0) {
-                    quotaEl.textContent = `${remainingDailyQuota} / ${limit}`;
-                }
-            }
-        }
-
-        function applyDummyModelSelectionUI() {
-            const customerPhotoInput = document.getElementById('customerPhoto');
-            const customerPreview = document.getElementById('customerPreview');
-            const customerPlaceholder = document.getElementById('customerPlaceholder');
-            const removePhotoBtn = document.getElementById('removePhotoBtn');
-            const toggleWrap = document.getElementById('dummyModelToggleWrap');
-            const toggle = document.getElementById('useDummyModelToggle');
-            const hasDummyModelUrl = Boolean(TRYON_DUMMY.model_image_url);
-
-            if (!toggleWrap || !toggle) {
-                return;
-            }
-
-            if (TRYON_DUMMY.enabled) {
-                toggleWrap.style.display = 'none';
-                useDummyModelForRealGenerate = hasDummyModelUrl;
-                toggle.checked = hasDummyModelUrl;
-                customerPhotoInput.value = '';
-                customerPhotoInput.disabled = true;
-                removePhotoBtn.style.display = 'none';
-
-                if (hasDummyModelUrl) {
-                    customerPreview.src = TRYON_DUMMY.model_image_url;
-                    customerPreview.style.display = 'block';
-                    customerPlaceholder.style.display = 'none';
-                } else {
-                    customerPreview.removeAttribute('src');
-                    customerPreview.style.display = 'none';
-                    customerPlaceholder.style.display = 'block';
-                }
-                return;
-            }
-
-            if (!hasDummyModelUrl) {
-                toggleWrap.style.display = 'none';
-                useDummyModelForRealGenerate = false;
-                toggle.checked = false;
-                customerPhotoInput.disabled = false;
-                return;
-            }
-
-            toggleWrap.style.display = 'inline-flex';
-            useDummyModelForRealGenerate = toggle.checked;
-
-            if (useDummyModelForRealGenerate) {
-                customerPhotoInput.value = '';
-                customerPhotoInput.disabled = true;
-                removePhotoBtn.style.display = 'none';
-                customerPreview.src = TRYON_DUMMY.model_image_url;
-                customerPreview.style.display = 'block';
-                customerPlaceholder.style.display = 'none';
-                return;
-            }
-
-            customerPhotoInput.disabled = false;
-            if (!customerPhotoInput.files || !customerPhotoInput.files[0]) {
-                customerPreview.removeAttribute('src');
-                customerPreview.style.display = 'none';
-                customerPlaceholder.style.display = 'block';
-                removePhotoBtn.style.display = 'none';
-            }
-        }
-
         async function refreshQuota() {
             try {
                 const response = await fetch(@json(route('public.tryon.quota.show', ['seller_slug' => $seller->slug])), {
@@ -1664,47 +1573,8 @@
                 return;
             }
 
-            if (TRYON_DUMMY.enabled) {
-                if (!TRYON_DUMMY.model_image_url) {
-                    setStatus(I18N.dummyModelUrlMissing, 'error');
-                    showResultPlaceholderMessage(I18N.dummyModelUrlMissing, 'error');
-                    return;
-                }
-
-                if (!TRYON_DUMMY.result_url) {
-                    setStatus(I18N.dummyResultUrlMissing, 'error');
-                    showResultPlaceholderMessage(I18N.dummyResultUrlMissing, 'error');
-                    return;
-                }
-
-                if (remainingDailyQuota !== null && remainingDailyQuota <= 0) {
-                    setStatus(I18N.dailyLimitReached, 'error');
-                    showResultPlaceholderMessage(I18N.dailyLimitReached, 'error');
-                    setLoading(false);
-                    return;
-                }
-
-                setLoading(true);
-                setStatus('', '');
-                resultPreview.removeAttribute('src');
-                resultPreview.style.display = 'none';
-                resultPlaceholder.style.display = 'block';
-
-                await new Promise((resolve) => window.setTimeout(resolve, 1800));
-
-                resultPreview.src = TRYON_DUMMY.result_url;
-                resultPreview.style.display = 'block';
-                resultPlaceholder.style.display = 'none';
-                consumeDummyQuotaUI();
-                setStatus(I18N.generateDone, 'success');
-                setLoading(false);
-                refreshHistory();
-                return;
-            }
-
-            const useDummyModelImage = Boolean(TRYON_DUMMY.model_image_url) && useDummyModelForRealGenerate;
             const file = customerPhotoInput.files && customerPhotoInput.files[0] ? customerPhotoInput.files[0] : null;
-            if (!useDummyModelImage && (!file || !customerPreview.getAttribute('src'))) {
+            if (!file || !customerPreview.getAttribute('src')) {
                 setStatus(I18N.uploadModelFirst, 'error');
                 showResultPlaceholderMessage(I18N.uploadModelFirst, 'error');
                 return;
@@ -1726,10 +1596,7 @@
             try {
                 const formData = new FormData();
                 formData.append('product_id', String(selectedProductId));
-                formData.append('use_dummy_model', useDummyModelImage ? '1' : '0');
-                if (!useDummyModelImage && file) {
-                    formData.append('customer_photo', file);
-                }
+                formData.append('customer_photo', file);
 
                 const createResponse = await fetch(@json(route('public.tryon.sessions.store', ['seller_slug' => $seller->slug])), {
                     method: 'POST',
@@ -1865,15 +1732,6 @@
                 });
             }
 
-            const toggle = document.getElementById('useDummyModelToggle');
-            if (toggle) {
-                toggle.checked = Boolean(TRYON_DUMMY.model_image_url);
-                toggle.addEventListener('change', function() {
-                    useDummyModelForRealGenerate = this.checked;
-                    applyDummyModelSelectionUI();
-                });
-            }
-            applyDummyModelSelectionUI();
             refreshQuota();
             refreshHistory();
         })();

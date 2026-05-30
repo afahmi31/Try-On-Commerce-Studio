@@ -54,21 +54,8 @@ class TryOnPublicController extends Controller
 
         $payload = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
-            'use_dummy_model' => ['nullable', 'boolean'],
-            'customer_photo' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'customer_photo' => ['required', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
-
-        $dummyModelImageUrl = is_string($seller->aiSetting?->fashn_dummy_model_image_url)
-            ? trim($seller->aiSetting->fashn_dummy_model_image_url)
-            : '';
-        $hasDummyModelImageUrl = $dummyModelImageUrl !== '';
-        $useDummyModel = $hasDummyModelImageUrl && $request->boolean('use_dummy_model');
-
-        if (! $request->hasFile('customer_photo') && ! $useDummyModel) {
-            return response()->json([
-                'message' => 'Upload foto model terlebih dahulu atau isi Dummy Model Image URL di settings.',
-            ], 422);
-        }
 
         // Locked to the lowest-cost provider mode (balanced + 1k via "standard").
         $qualityMode = 'standard';
@@ -85,9 +72,7 @@ class TryOnPublicController extends Controller
         $providerConfig = $this->resolveProviderConfig($seller);
         $providerModel = (string) ($providerConfig['model'] ?? config('ai.providers.fashn.model', 'tryon-max'));
 
-        $photoPath = $useDummyModel
-            ? $dummyModelImageUrl
-            : $payload['customer_photo']->store('tryon/customers/'.$seller->id, 'public');
+        $photoPath = $payload['customer_photo']->store('tryon/customers/'.$seller->id, 'public');
 
         $sessionPayload = [
             'seller_id' => $seller->id,
@@ -401,7 +386,8 @@ class TryOnPublicController extends Controller
         }
 
         $config = [
-            'dummy_enabled' => (bool) $setting->fashn_dummy_enabled,
+            // Public store flow must always use real provider request.
+            'dummy_enabled' => false,
         ];
 
         if (is_string($setting->fashn_api_key) && trim($setting->fashn_api_key) !== '') {
@@ -436,14 +422,6 @@ class TryOnPublicController extends Controller
             if (is_string($setting->fashn_tryon_max_output_format) && trim($setting->fashn_tryon_max_output_format) !== '') {
                 $config['output_format'] = $setting->fashn_tryon_max_output_format;
             }
-        }
-
-        if (is_string($setting->fashn_dummy_result_url) && trim($setting->fashn_dummy_result_url) !== '') {
-            $config['dummy_result_url'] = $setting->fashn_dummy_result_url;
-        }
-
-        if (is_string($setting->fashn_dummy_model_image_url) && trim($setting->fashn_dummy_model_image_url) !== '') {
-            $config['dummy_model_image_url'] = $setting->fashn_dummy_model_image_url;
         }
 
         return $config;
